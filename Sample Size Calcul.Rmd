@@ -1,0 +1,308 @@
+---
+title: "Power Analysis and Data Analysis Plan - Alessandra Marvelo"
+author: "Flynn Entwistle, Gisella Sutanto, Yoon Hee Cha"
+output:
+  html_document:
+    fig_caption: yes
+    number_sections: yes
+    self_contained: yes
+    theme: cerulean
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: hide
+    html_notebook:
+      toc:yes
+      toc_depth:'3'
+runtime :   
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Executive Summary
+
+Alessandra is formulating her ethics application for an upcoming study evaluating the effects of a patient decision aid on their intention to try opioids to ease back pain. The study will be a double blinded randomized control trial, constructed analagously to *The impact of a patient decision aid on intention to undergo surgery for Subacromial Pain Syndrome: An online randomised controlled trial* (Zadro et al., 2022). Alessandra has requested us to calculate the sample size necessary to achieve 90% power in detecting a 12% difference of group mean in the primary outcome. Additionally, a prospective data analysis plan based on the aims of the study is provided.
+
+# Introduction
+
+Alessandra is working on her ethics application for an upcoming research
+on the effects of decision aid for patients that considered taking
+opioids to cure backpain.
+
+## Background of the project
+
+The planned research is a randomised controlled trial (RCT) methodology,
+which meant a calculation on the amount of control and intervention
+group is needed. The primary outcome---which will be used for the power
+analysis--- of the client's research is to see whether treatment aid
+would influence the participant's decision to take Opioids or not.
+Sample size will be taken from patients who both had Opiods and not.
+
+**Aims demonstrated in this report**
+
+-   The Power statistic calculation using **pwr.t.test** from the
+    package **pwr**
+
+-   A theoretical visualisation of the power analysis
+
+-   A plan for the statistical calculation/methodology, modeled based
+    off the reference paper.
+
+-   Data Analysis Plan
+
+# Power Analysis
+
+Client wishes to mirror statistical analysis methodology from a previous
+statistical study. two different approaches on aquiring sample number
+will be given, one being based on the paper's method and the other being
+based of client's inquiry.
+
+## Sample Number Calculation Based on Paper Methodology
+
+Power analysis on paired two-sample t-test on primary outcome Treatment
+Intention: 90% power. alpha = 0.05. How many samples is sufficient to
+detect a 12% difference betweeen individuals intending to undergo
+surgery from the control and intervention group means?
+
+The referenced research paper took the sample size by dividing the
+likert scale dichotomously, the sample size calculation follows the
+paper's methodology of ignoring the range given by it's likert scale of
+0-15.
+
+with pwr.t.test the below numbers are given
+
+```{r,results='hide',error=FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(pwr))
+suppressPackageStartupMessages(library(ggplot2))
+```
+
+In the case of proportions , Cohen's d can be calculated using the
+formula:
+
+$$ d = \frac{{|\Phi^{-1}(p_1) - \Phi^{-1}(p_2)|}}{{\sqrt{2}}} $$
+
+where $\Phi^{-1}(p)$ is the inverse cumulative distribution function of
+the standard normal distribution, and $p_1$ and $p_2$ are the
+proportions in the two groups.
+
+```{r}
+
+# effect size calculation
+
+p1 <- 0.70  # Proportion in group 1 (decision aid)
+p2 <- 0.82  # Proportion in group 2 (control)
+
+
+# Calculate the effect size (Cohen's d)
+effect_size <- abs(qnorm(p1) - qnorm(p2)) / sqrt(2)
+
+#Print the result
+#In this case, the effect size is 0.276. 
+
+n_total <- 396  # Total sample size
+alpha <- 0.05  # Significance level
+power <- 0.9  # Desired power
+
+
+pwr.t.test(d = 0.283, sig.level = alpha, power = 0.9, type = "two.sample")
+```
+
+Based on the consulting session, client wishes to do a sample size
+calculation which does not summarise the scale into two category
+(intention is measured based on scale).
+
+## Sample Size Calculation with a likert scale
+
+By considering the likert scale, a different approach will be needed.
+Pwr.t.test assumes the samples collected are continous however, knowing
+that the client intended to use discrete point scales, another power
+test will be performed.
+
+Through simulating a value, an assumption on the sample size can be
+collected.
+
+### Simulating power across Likert scale range
+
+Below is the power simulated for paired t-tests across Likert scale
+range. which will show how many sample is needed to provide a 90% for
+any given scale
+
+```{r,echo=T}
+
+# helper function for calculating SD
+  # as scale increases, SD should naturally increase as well (makes sense for survey data).
+  # this function increases SD proportionately to the % increase in scale by adding an extra point.
+    # approximates the SD of the reference paper pretty well, so works for our purposes.
+get_sd <- function(scale) {
+  if (max(scale) == 2) {
+    return (1)
+  }
+  return ( get_sd(max(scale - 1)) + (1 / max(scale)) )
+}
+
+set.seed(123)
+
+# Calculates power as the percentage of B t-tests which correctly reject H0.
+calculate_paired_t_test_power <- function(scale, alpha, mean_difference_percentage, n1, n2, B) {
+  
+  # Counter for every time null hypothesis is correctly rejected.
+  correctly_rejected_H0s <- 0
+  
+  # mean on scale
+  mean_scale = mean(scale)
+  sd = get_sd(scale)
+  
+  # Mean of 2 groups (to generate sampling probability)
+  mu_1 = mean_scale*(1 - (mean_difference_percentage/2))
+  mu_2 = mean_scale*(1 + (mean_difference_percentage/2))
+  
+  # Generate sampling weights corresponding to a normal distribution.
+  weights_group1 <- dnorm(scale, mean = mu_1, sd = sd)
+  weights_group1 <- weights_group1 / sum(weights_group1)  # normalize weights to sum to 1
+  
+  weights_group2 <- dnorm(scale, mean = mu_2, sd = sd)
+  weights_group2 <- weights_group2 / sum(weights_group2) # same as above
+  
+  # Perform simulations
+  for (i in 1:B) {
+    
+    # Sample integers in specified scale using the calculated weights for each group
+    samples_group1 <- sample(scale, size = n1, replace = TRUE, prob = weights_group1)
+    samples_group2 <- sample(scale, size = n2, replace = TRUE, prob = weights_group2)
+    
+    # paired t-test on generated data.
+    t_test <- t.test(samples_group1, samples_group2, 
+                     alternative = "two.sided", 
+                     mu = 0, 
+                     paired = FALSE, 
+                     var.equal = TRUE, 
+                     conf.level = 1-alpha)
+    
+    # Check if the result is significant
+    if (t_test$p.value < alpha) {
+      correctly_rejected_H0s <- correctly_rejected_H0s + 1
+    }
+  }
+  
+  # Calculate power
+  power <- correctly_rejected_H0s / B
+  return (power)
+}
+
+B = 2000
+
+alpha = 0.05
+
+mean_difference_percentage = 0.12
+
+n1 = 200
+
+n2 = 200
+
+power_vec_n200 = vector()
+
+for (i in 2:20) {
+
+power_vec_n200[i-1] = calculate_paired_t_test_power(1:i, alpha, mean_difference_percentage, n1, n2, B)
+
+}
+
+n1 = 250
+
+n2 = n1
+
+power_vec_n250 = vector()
+
+for (i in 2:20) {
+
+power_vec_n250[i-1] = calculate_paired_t_test_power(1:i, alpha, mean_difference_percentage, n1, n2, B)
+
+}
+
+n1 = 300
+
+n2 = n1
+
+power_vec_n300 = vector()
+
+for (i in 2:20) {
+
+power_vec_n300[i-1] = calculate_paired_t_test_power(1:i, alpha, mean_difference_percentage, n1, n2, B)
+
+}
+
+```
+
+**Plotting Power by Scale for each sample size.**
+
+```{r,echo=TRUE}
+scale_power_n = data.frame(power_vec_n200, power_vec_n250, power_vec_n300, 2:20)
+
+long_scale_pwr_n = scale_power_n |> 
+  pivot_longer(
+    cols = starts_with("power_vec_n"),
+    names_to = ("Samples per group"),
+    names_prefix = "power_vec_n",
+    values_to = "Power"
+      ) |> mutate(`Samples per group` = factor(`Samples per group`))
+
+colnames(long_scale_pwr_n) = c("Points on Likert scale", "Samples per group", "Power")
+
+
+
+long_scale_pwr_n |> ggplot() + 
+  geom_point(aes(x=`Points on Likert scale`, y=`Power`, color = `Samples per group`)) + 
+  geom_hline(yintercept=0.8) + 
+  geom_hline(yintercept=0.9) + 
+  scale_y_continuous(breaks = sort(c(seq(round(min(long_scale_pwr_n$Power), 1), round(max(long_scale_pwr_n$Power), 1), length.out=4), 0.8, 0.9))) + 
+  scale_x_continuous(breaks = c(2, 5, 10, 15, 20)) + 
+  theme_bw()
+```
+
+**The Plot Indiciates**
+
+-   200 samples per group is enough to do a 15 point on a likert scale
+
+## Control and Intervention amount
+
+-   We recommend an equal divide on the amount of intervention and
+    control patient.
+
+-   an added 20% from the given amount to consider unresponsive samples
+
+# Data analysis plan
+
+### **We encourage the client to :**
+
+-   Generate summary statistics and view the distribution of
+    observations for participant demographics, symptoms, and outcome
+    responses.
+
+-   T-tests for comparisons on numerical outcomes, Chi-sq for
+    categorical outcomes: Two-sample t-test (based on the likert scale
+    of 0-15) for control and intervention comparisons. (In reference to
+    the paper, a secondary outcome was made by binning treatment
+    intention into \>= and \< 50%).
+
+-   Perform logistic regression on effect of intervention on intention
+    to try / not try Opioids. Sensitivity analysis on time it took
+    participants to complete the survey.
+
+### **Data analysis plan**
+
+All analyses will be blinded to group status and will be by
+intention-to-treat. Statistical significance will be defined as P\<0.05
+based on a two-sided test. The primary outcome will be analysed using a
+Student two sample T-test. Analysis adjusted for baseline scores and
+other demographic and clinical characteristics will also be performed
+using analysis of covariance models with the change from baseline as the
+dependent variable. A secondary analysis including data from all
+follow-ups and will be conducted using repeated measures with a (0-15)
+Likert scale. The remaining outcome measures will also be regarded as
+secondary and analysed separately with a logistic regression for
+dichotomous measures and linear regression analysis for continuous
+outcome.
+
+
